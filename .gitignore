@@ -1,0 +1,298 @@
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+import os, re, random, time
+ 
+with open('config.txt') as f: config = dict([tuple(line.split('//')[0].rstrip().split(':')) for line in f.read().splitlines()]) # Настройки
+with open('yndx.txt') as f: all_accounts = f.read().splitlines() # Все аккаунты для работы
+with open('yndx.txt') as f: login, pwd = [acc for acc in f.read().splitlines() if len(acc.split(':')) == 2][0].split(':') # Логин и пароль от аккаунта
+ 
+print u"\nБудем использовать аккаунт - %s\n" % login
+ 
+    # ---------- Настройки
+    company_number = int(config['start_number']) # Номер кампании
+    company_name = config['company-name'] # Название кампании
+    title = config['title'] # Заголовок объявления
+    text = config['text'] # Текст объявления
+    domain = config['domain'] # Домен используемый в объявлении
+    keywords = config['keywords'] # Ключевые слова
+    # ----------
+class Direct_BOT(object): # Класс работы с Я.Директом
+
+    def __init__(self, actions_number): # Конструктор
+        self.actions_number = actions_number # Необходимое количество кампаний
+        self.current_number = company_number # Текущий номер кампании
+        self.space_number = 1 # Число пробелов которые мы ставим после названия кампании (перед цифрой)
+        self.auth_again = False # Пометка об авторизции бота
+        self.second_step_again = False # Пометка о проходе 2-ого шага создания объявления
+        self.third_step_again = False # Пометка о проходе 3-ого шага создания объявления
+        self.new_company_ckick = False # Пометка о клике по даче нового объявления
+        self.br = webdriver.Firefox(); time.sleep(1) # Создаем браузер
+        self.br.maximize_window() # И раскрываем его полностью
+	
+    def go_to_moderate(self): # Последний шаг, отправка кампании на модерацию
+        try:            
+            self.br.find_element_by_xpath('//input[@id="accept"]').click(); time.sleep(random.uniform(1, 2)) # Говорим что согласны с условиями
+            self.br.find_element_by_xpath('//input[@id="sbm_button"]').click() # Нажимаем кнопку "Заказать"
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+        except Exception as err: print u"\nВозникла ошибка - '%s' на этапе отправки объявления на модерацию, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); return 0
+		
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def third_step(self): # Проходим третий шаг создания кампании
+        try:           
+            print u"Минимальная цена клика по первому ключевику - %s, устанавливаем её ..." % self.min_price
+            self.br.find_element_by_name('val-0_1').click(); time.sleep(random.uniform(1, 1)) # Кликаем по текущему значению цены
+            for i in range(7): self.br.find_element_by_name('val-0_1').send_keys((lambda: self.third_step_again and u'\ue003' or u'\ue017')()); time.sleep(.1) # Удаляем нули с точкой 4 раза (в сумме)
+            self.br.find_element_by_name('val-0_1').send_keys(str(random.randint(50, 299))); time.sleep(random.uniform(1, 1)) # Устанавливаем цену клика
+            self.br.find_element_by_name('val-0_1').send_keys(Keys.RETURN); time.sleep(random.uniform(1, 1)) # И нажимаем Enter
+            self.br.find_element_by_xpath('//input[@class="b-form-footer__action b-edit-prices-form__submit"]').click(); time.sleep(random.uniform(1, 3)) # Переходим к премодерации
+            self.br.find_elements_by_xpath('//input[@type="submit"]')[1].click(); time.sleep(random.uniform(1, 3)) # Отправляем кампанию на модерацию
+			
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+			
+            self.third_step_again = True # Делаем пометку о том, что мы уже проходили 1 раз 3-ий этап создания объявления
+        except Exception as err: print u"\nВозникла ошибка - '%s' на 3 этапе создания объявления, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); return 0
+		
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def second_step(self): # Проходим второй шаг создания кампании
+        try:
+		
+            if self.second_step_again: # Если ранее на втором шаге была ошибка и мы начали его по новой - стираем оставшиеся поля
+                print u"Второй шаг уже был ранее пройден, значит очищаем оставшиеся поля ..."
+                self.br.find_element_by_xpath('//div[@class="b-spell-checker__frame"]').clear(); time.sleep(.5)
+                self.br.find_element_by_xpath('//div[@class="b-spell-checker__frame b-spell-checker__frame_multiline_yes"]').clear(); time.sleep(.5)
+                self.br.find_element_by_xpath('//input[@class="b-form-input__input b-banner-form-href__href CopyForms-Url"]').clear(); time.sleep(.5)
+                self.br.find_element_by_xpath('//textarea[@class="wide mandatory b-word-suggestions__phrases"]').clear(); time.sleep(.5)
+		
+            self.br.find_element_by_xpath('//div[@class="b-spell-checker__frame"]').send_keys(title.decode('cp1251')); time.sleep(random.uniform(1, 1)) # Вставляем заголовок объявления
+            self.br.find_element_by_xpath('//div[@class="b-spell-checker__frame b-spell-checker__frame_multiline_yes"]').send_keys(text.decode('cp1251')); time.sleep(random.uniform(1, 1)) # Вставляем текст объявления
+            self.br.find_element_by_xpath('//input[@class="b-form-input__input b-banner-form-href__href CopyForms-Url"]').send_keys(domain.decode('cp1251')); time.sleep(random.uniform(1, 1)) # Вставляем ссылку объявления
+            self.br.find_element_by_xpath('//textarea[@class="wide mandatory b-word-suggestions__phrases"]').send_keys(keywords.decode('cp1251')); time.sleep(random.uniform(1, 1)) # Вставляем ключи объявления
+            self.br.find_element_by_xpath('//input[@class="b-banner-edit-validate__submit"]').click(); time.sleep(random.uniform(1, 3)) # Переходим ко третьему этапу
+			
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+			
+            self.second_step_again = True # Делаем пометку о том что второй шаг уже пройден
+            self.min_price = re.findall(r'class="b-phrases-list-phrase__min">(.+?)<', self.br.page_source)[0] # Ловим минимальную цену клика
+        except Exception as err: print u"\nВозникла ошибка - '%s' на 2 этапе создания объявления, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); return 0
+		
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def first_step(self): # Проходим первый шаг создания кампании
+        try:
+            # self.br.find_element_by_name('name').clear(); time.sleep(random.uniform(1, 1)) # Очищаем название кампании по умолчанию
+            # self.br.find_element_by_name('name').send_keys(company_name.lower().decode('cp1251')); time.sleep(random.uniform(1, 1)) # Устанавливаем название кампании
+            # self.br.find_element_by_name('name').send_keys('%s%i' % (' ' * self.space_number, self.current_number)); time.sleep(random.uniform(1, 1)) # Дополняем название текущим номером кампании
+            self.br.find_element_by_xpath('//input[@class="b-campaign-edit__submit"]').click(); time.sleep(random.uniform(1, 3)) # Переходим ко второму этапу
+			
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+			
+            if not self.second_step_again: self.br.find_element_by_xpath('//span[@class="b-form-switch__button"]').click(); time.sleep(random.uniform(1, 2)) # Говорим что у нас нету адреса и телефона
+        except Exception as err: print u"\nВозникла ошибка - '%s' на 1 этапе создания объявления, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); self.space_number += 1; return 0
+		 
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def auth(self): # Авторизация и проверка выбора интерфейса
+        try:
+            if not self.auth_again: # Если еще ниразу не авторизовывались
+                self.br.get('https://passport.yandex.ru/passport?mode=auth&msg=direct&retpath=https%3A%2F%2Fdirect.yandex.ru%2Fregistered%2Fmain.pl'); time.sleep(random.uniform(2, 5)) # Переходим на страницу авторизации Я.Директа
+                self.br.find_element_by_name('login').send_keys(login); time.sleep(random.uniform(1, 1)) # Вводим логин
+                self.br.find_element_by_name('passwd').send_keys(pwd); time.sleep(random.uniform(1, 1)) # Вводим пароль
+                self.br.find_element_by_xpath('//input[@type="submit"]').click(); time.sleep(random.uniform(1, 2)) # Входим в систему               
+                self.auth_again = True # Пометка о том, что следующая авторизация - повторная
+            else: # Если уже авторизовались
+                self.br.get('https://direct.yandex.ru/registered/main.pl?cmd=editCamp&new_camp=1&mediaType=text'); time.sleep(random.uniform(1, 3)) # Тогда просто нажимаем кнопку создания объявления
+                self.new_company_ckick = True # Помечаем что мы уже кликнули на эту кнопку
+			
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+
+            try:
+                try: self.br.find_element_by_xpath("//select[@class='b-choose-country__select']/option[@value='225']").click(); time.sleep(random.uniform(1, 1)) # Выбираем Россию
+                except: time.sleep(1)
+                self.br.find_element_by_xpath('//input[@id="b-choose-interface-type__radio-std"]').click(); time.sleep(random.uniform(1, 1)) # Выбираем профессиональный интерфейс
+                self.br.find_element_by_xpath('//input[@type="submit"]').click(); time.sleep(random.uniform(1, 3)) # Продолжаем
+            except Exception as err: # Если на этом аккаунте уже есть созданные кампании
+                print u"Выбор интерфейса не требуется, на аккаунте %s уже есть созданные кампании ...\n" % login
+                if not self.new_company_ckick: self.br.get('https://direct.yandex.ru/registered/main.pl?cmd=editCamp&new_camp=1&mediaType=text'); time.sleep(random.uniform(1, 3)) # Тогда просто нажимаем кнопку создания объявления
+        except Exception as err: print u"\nВозникла ошибка - '%s' на этапе авторизации, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); return 0
+		
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def start(self): # Создание браузера и контроль за работой бота
+        auth, step1, step2, step3, moderate = False, False, False, False, False # По умолчанию ни 1 из действий не сделано
+        print u"\nВыбранное количество действий - '%i', запускаем бота ...\n" % self.actions_number
+	
+        for i in range(self.actions_number): # Создаем необходимое количество кампаний
+		
+            # --------------- Блок создания кампании
+            while not auth: auth = self.auth(); time.sleep(1) # Авторизуемся и проверяем, есть уже кампании или нет
+            while not step1: step1 = self.first_step(); time.sleep(1) # Устанавливаем основную информацию
+            while not step2: step2 = self.second_step(); time.sleep(1) # Устанавливаем параметры объявления
+            while not step3: step3 = self.third_step(); time.sleep(1) # Устанавливаем цену клика по ключевикам
+            while not moderate: moderate = self.go_to_moderate(); time.sleep(1) # Отправляем новую кампанию на модерацию
+            print u"\n\n* ----- Кампания '%s %i' создана! ----- *\n\n" % (company_name.decode('cp1251'), self.current_number)
+            self.current_number += 1 # В конце увеличиваем номер кампании для всех последующих (что бы не сливались)
+            self.space_number = 1 # Восстанавливаем число пробелов по умолчанию
+            auth, step1, step2, step3, moderate = False, False, False, False, False # Снимаем успешность всех этапов (т.к. проходим круг заного)
+            self.second_step_again = False # Снимаем пометку о том, что второй шаг уже пройден (т.к. создаем новое объявление)
+            self.third_step_again = False # Снимаем пометку о том, что третий шаг уже пройден (т.к. создаем новое объявление)
+            self.new_company_ckick = False # Снимаем пометку о том что мы кликали на кнопку по даче объявления
+            time.sleep(random.uniform(3, 7)) # После создания каждой кампании - спим
+            # ---------------
+
+def direct_starter(): # Функция запуска бота
+    resp = '' # По умолчанию ответ не определен
+	
+    while resp != '0': # До тех пор остаемся в программе
+	
+        print u"Что будем делать?\n\n\t[any number] - Создать кампании в Я.Директе\n\t0 - Выход из программы\n"
+        resp = str(raw_input('How much company do you wish to create?: '))
+        if not re.search('\d', resp): print u"\nНужно выбрать число! От 0 до 10\n"; continue
+		
+        if resp != '0':
+            bot = Direct_BOT(int(resp)) # Запускаем бота на нужное количество действий
+            bot.start() # Начинаем работу
+			
+    with open('yndx.txt', 'w') as f: # В конце работы перезаписываем файл с аккаунтами
+        for acc in all_accounts:
+            if login in acc: # Если аккаунт который мы использовали для работы попался на текущей итерации
+                f.write('%s:%s\n' % (acc, keywords)) # Сохраняем его + ключевик
+            else: f.write('%s\n' % acc) # Иначе оставляем все как есть
+ 
+class Direct_BOT(object): # Класс работы с Я.Директом
+
+    def __init__(self, actions_number): # Конструктор
+        self.actions_number = actions_number # Необходимое количество кампаний
+        self.current_number = company_number # Текущий номер кампании
+        self.space_number = 1 # Число пробелов которые мы ставим после названия кампании (перед цифрой)
+        self.auth_again = False # Пометка об авторизции бота
+        self.second_step_again = False # Пометка о проходе 2-ого шага создания объявления
+        self.third_step_again = False # Пометка о проходе 3-ого шага создания объявления
+        self.new_company_ckick = False # Пометка о клике по даче нового объявления
+        self.br = webdriver.Firefox(); time.sleep(1) # Создаем браузер
+        self.br.maximize_window() # И раскрываем его полностью
+	
+    def go_to_moderate(self): # Последний шаг, отправка кампании на модерацию
+        try:            
+            self.br.find_element_by_xpath('//input[@id="accept"]').click(); time.sleep(random.uniform(1, 2)) # Говорим что согласны с условиями
+            self.br.find_element_by_xpath('//input[@id="sbm_button"]').click() # Нажимаем кнопку "Заказать"
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+        except Exception as err: print u"\nВозникла ошибка - '%s' на этапе отправки объявления на модерацию, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); return 0
+		
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def third_step(self): # Проходим третий шаг создания кампании
+        try:           
+            print u"Минимальная цена клика по первому ключевику - %s, устанавливаем её ..." % self.min_price
+            self.br.find_element_by_name('val-0_1').click(); time.sleep(random.uniform(1, 1)) # Кликаем по текущему значению цены
+            for i in range(7): self.br.find_element_by_name('val-0_1').send_keys((lambda: self.third_step_again and u'\ue003' or u'\ue017')()); time.sleep(.1) # Удаляем нули с точкой 4 раза (в сумме)
+            self.br.find_element_by_name('val-0_1').send_keys(str(random.randint(50, 299))); time.sleep(random.uniform(1, 1)) # Устанавливаем цену клика
+            self.br.find_element_by_name('val-0_1').send_keys(Keys.RETURN); time.sleep(random.uniform(1, 1)) # И нажимаем Enter
+            self.br.find_element_by_xpath('//input[@class="b-form-footer__action b-edit-prices-form__submit"]').click(); time.sleep(random.uniform(1, 3)) # Переходим к премодерации
+            self.br.find_elements_by_xpath('//input[@type="submit"]')[1].click(); time.sleep(random.uniform(1, 3)) # Отправляем кампанию на модерацию
+			
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+			
+            self.third_step_again = True # Делаем пометку о том, что мы уже проходили 1 раз 3-ий этап создания объявления
+        except Exception as err: print u"\nВозникла ошибка - '%s' на 3 этапе создания объявления, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); return 0
+		
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def second_step(self): # Проходим второй шаг создания кампании
+        try:
+		
+            if self.second_step_again: # Если ранее на втором шаге была ошибка и мы начали его по новой - стираем оставшиеся поля
+                print u"Второй шаг уже был ранее пройден, значит очищаем оставшиеся поля ..."
+                self.br.find_element_by_xpath('//div[@class="b-spell-checker__frame"]').clear(); time.sleep(.5)
+                self.br.find_element_by_xpath('//div[@class="b-spell-checker__frame b-spell-checker__frame_multiline_yes"]').clear(); time.sleep(.5)
+                self.br.find_element_by_xpath('//input[@class="b-form-input__input b-banner-form-href__href CopyForms-Url"]').clear(); time.sleep(.5)
+                self.br.find_element_by_xpath('//textarea[@class="wide mandatory b-word-suggestions__phrases"]').clear(); time.sleep(.5)
+		
+            self.br.find_element_by_xpath('//div[@class="b-spell-checker__frame"]').send_keys(title.decode('cp1251')); time.sleep(random.uniform(1, 1)) # Вставляем заголовок объявления
+            self.br.find_element_by_xpath('//div[@class="b-spell-checker__frame b-spell-checker__frame_multiline_yes"]').send_keys(text.decode('cp1251')); time.sleep(random.uniform(1, 1)) # Вставляем текст объявления
+            self.br.find_element_by_xpath('//input[@class="b-form-input__input b-banner-form-href__href CopyForms-Url"]').send_keys(domain.decode('cp1251')); time.sleep(random.uniform(1, 1)) # Вставляем ссылку объявления
+            self.br.find_element_by_xpath('//textarea[@class="wide mandatory b-word-suggestions__phrases"]').send_keys(keywords.decode('cp1251')); time.sleep(random.uniform(1, 1)) # Вставляем ключи объявления
+            self.br.find_element_by_xpath('//input[@class="b-banner-edit-validate__submit"]').click(); time.sleep(random.uniform(1, 3)) # Переходим ко третьему этапу
+			
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+			
+            self.second_step_again = True # Делаем пометку о том что второй шаг уже пройден
+            self.min_price = re.findall(r'class="b-phrases-list-phrase__min">(.+?)<', self.br.page_source)[0] # Ловим минимальную цену клика
+        except Exception as err: print u"\nВозникла ошибка - '%s' на 2 этапе создания объявления, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); return 0
+		
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def first_step(self): # Проходим первый шаг создания кампании
+        try:
+            # self.br.find_element_by_name('name').clear(); time.sleep(random.uniform(1, 1)) # Очищаем название кампании по умолчанию
+            # self.br.find_element_by_name('name').send_keys(company_name.lower().decode('cp1251')); time.sleep(random.uniform(1, 1)) # Устанавливаем название кампании
+            # self.br.find_element_by_name('name').send_keys('%s%i' % (' ' * self.space_number, self.current_number)); time.sleep(random.uniform(1, 1)) # Дополняем название текущим номером кампании
+            self.br.find_element_by_xpath('//input[@class="b-campaign-edit__submit"]').click(); time.sleep(random.uniform(1, 3)) # Переходим ко второму этапу
+			
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+			
+            if not self.second_step_again: self.br.find_element_by_xpath('//span[@class="b-form-switch__button"]').click(); time.sleep(random.uniform(1, 2)) # Говорим что у нас нету адреса и телефона
+        except Exception as err: print u"\nВозникла ошибка - '%s' на 1 этапе создания объявления, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); self.space_number += 1; return 0
+		 
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def auth(self): # Авторизация и проверка выбора интерфейса
+        try:
+            if not self.auth_again: # Если еще ниразу не авторизовывались
+                self.br.get('https://passport.yandex.ru/passport?mode=auth&msg=direct&retpath=https%3A%2F%2Fdirect.yandex.ru%2Fregistered%2Fmain.pl'); time.sleep(random.uniform(2, 5)) # Переходим на страницу авторизации Я.Директа
+                self.br.find_element_by_name('login').send_keys(login); time.sleep(random.uniform(1, 1)) # Вводим логин
+                self.br.find_element_by_name('passwd').send_keys(pwd); time.sleep(random.uniform(1, 1)) # Вводим пароль
+                self.br.find_element_by_xpath('//input[@type="submit"]').click(); time.sleep(random.uniform(1, 2)) # Входим в систему               
+                self.auth_again = True # Пометка о том, что следующая авторизация - повторная
+            else: # Если уже авторизовались
+                self.br.get('https://direct.yandex.ru/registered/main.pl?cmd=editCamp&new_camp=1&mediaType=text'); time.sleep(random.uniform(1, 3)) # Тогда просто нажимаем кнопку создания объявления
+                self.new_company_ckick = True # Помечаем что мы уже кликнули на эту кнопку
+			
+            while re.search(r'Контрольные цифры'.decode('cp1251'), self.br.page_source): # Если выпала капча
+                print u"\n* ----- ВЫПАЛА КАПЧА, ВВЕДИТЕ ЕЁ ----- *\n"; time.sleep(random.uniform(5, 15))
+
+            try:
+                try: self.br.find_element_by_xpath("//select[@class='b-choose-country__select']/option[@value='225']").click(); time.sleep(random.uniform(1, 1)) # Выбираем Россию
+                except: time.sleep(1)
+                self.br.find_element_by_xpath('//input[@id="b-choose-interface-type__radio-std"]').click(); time.sleep(random.uniform(1, 1)) # Выбираем профессиональный интерфейс
+                self.br.find_element_by_xpath('//input[@type="submit"]').click(); time.sleep(random.uniform(1, 3)) # Продолжаем
+            except Exception as err: # Если на этом аккаунте уже есть созданные кампании
+                print u"Выбор интерфейса не требуется, на аккаунте %s уже есть созданные кампании ...\n" % login
+                if not self.new_company_ckick: self.br.get('https://direct.yandex.ru/registered/main.pl?cmd=editCamp&new_camp=1&mediaType=text'); time.sleep(random.uniform(1, 3)) # Тогда просто нажимаем кнопку создания объявления
+        except Exception as err: print u"\nВозникла ошибка - '%s' на этапе авторизации, спим и пробуем заного ...\n" % str(err); time.sleep(random.uniform(1, 3)); return 0
+		
+        return True # Если успешно прошли данный этап - переходим к следующему
+		
+    def start(self): # Создание браузера и контроль за работой бота
+        auth, step1, step2, step3, moderate = False, False, False, False, False # По умолчанию ни 1 из действий не сделано
+        print u"\nВыбранное количество действий - '%i', запускаем бота ...\n" % self.actions_number
+	
+        for i in range(self.actions_number): # Создаем необходимое количество кампаний
+		
+            # --------------- Блок создания кампании
+            while not auth: auth = self.auth(); time.sleep(1) # Авторизуемся и проверяем, есть уже кампании или нет
+            while not step1: step1 = self.first_step(); time.sleep(1) # Устанавливаем основную информацию
+            while not step2: step2 = self.second_step(); time.sleep(1) # Устанавливаем параметры объявления
+            while not step3: step3 = self.third_step(); time.sleep(1) # Устанавливаем цену клика по ключевикам
+            while not moderate: moderate = self.go_to_moderate(); time.sleep(1) # Отправляем новую кампанию на модерацию
+            print u"\n\n* ----- Кампания '%s %i' создана! ----- *\n\n" % (company_name.decode('cp1251'), self.current_number)
+            self.current_number += 1 # В конце увеличиваем номер кампании для всех последующих (что бы не сливались)
+            self.space_number = 1 # Восстанавливаем число пробелов по умолчанию
+            auth, step1, step2, step3, moderate = False, False, False, False, False # Снимаем успешность всех этапов (т.к. проходим круг заного)
+            self.second_step_again = False # Снимаем пометку о том, что второй шаг уже пройден (т.к. создаем новое объявление)
+            self.third_step_again = False # Снимаем пометку о том, что третий шаг уже пройден (т.к. создаем новое объявление)
+            self.new_company_ckick = False # Снимаем пометку о том что мы кликали на кнопку по даче объявления
+            time.sleep(random.uniform(3, 7)) # После создания каждой кампании - спим
+            # ---------------
+            
+    direct_starter(); raw_input('\nPress Enter to exit: ')            
